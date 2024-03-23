@@ -1,0 +1,83 @@
+---
+title: "ENV797_TSA_project_S2024"
+author: "Faustin Kambale Samantha Pace Drew Wolanski"
+date: "2024-03-22"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r, message=FALSE}
+library(lubridate)
+library(ggplot2)
+library(forecast)  
+library(Kendall)
+library(tseries)
+library(outliers)
+library(tidyverse)
+library(cowplot)
+library(sarima)
+library(patchwork)
+library(dplyr)
+library(forecast)
+library(readxl)
+```
+
+## CO2 Emissions Forecasting : Predicting U.S. CO2 emissions from energy consumption
+
+# Background & Research Question
+
+1. Coal has been on the decline due to poor economics and increased scrutiny on emissions
+2. Natural gas has concurrently been on the rise due to low prices caused by fracking revolution
+   - Decrease in coal emissions partially offset by new natural gas plants
+3. Project aims to forecast the CO2 emissions from coal, natural gas, and petroleum based on
+historical data and determine if total CO2 emissions are declining as needed to meet climate goals
+  - Biden goal to reduce GHG emissions by 50% below 2005 levels by 2030
+
+# Data description
+
+To verify our research question, we used data from the U.S. Energy Information Administration *Monthly Energy Review February 2024*
+
+Data Category: Environment
+Energy Sources: Coal, Natural Gas, Petroleum
+Sampling frequency: Monthly
+Training Data Date Range: Jan 1973-Nov 2023 (n=611)
+Forecast Length: 6 years (2030)
+
+## Loading the Dataset
+
+```{r}
+data <- read_excel ("/Users/faustinkambale/Library/CloudStorage/OneDrive-DukeUniversity/Spring 2024 classes/Time Series 4 Energy/TSA_Sp24/Project/ENV797_TSA_project_S2024/Data/Table_11.1_Carbon_Dioxide_Emissions_From_Energy_Consumption_by_Source.xlsx",  skip = 10)
+```
+
+##Data wrangling: remaning the variables
+
+```{r}
+#Rename the columns 
+data <- data %>%
+  rename (
+    coalimports = `Coal, Including Coal Coke Net Imports, CO2 Emissions (Million Metric Tons of Carbon Dioxide)`, 
+    naturalgas = `Natural Gas, Excluding Supplemental Gaseous Fuels, CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    fuleoil= `Distillate Fuel Oil, Excluding Biodiesel, CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    aviationgas = `Aviation Gasoline CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    hydrocabongas= `Hydrocarbon Gas Liquids CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    jetco2emmissions= `Jet Fuel CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    keroseneco2emissions=`Kerosene CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    lubricantsco2emissions=`Lubricants CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    motosgasolineco2emissions=`Motor Gasoline, Excluding Ethanol, CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    petroliumco2emissions=`Petroleum Coke CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    residualco2emissions=`Residual Fuel Oil CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    otherpetroliumco2emissions=`Other Petroleum Products CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    petroliumlessbioco2emissions=`Petroleum, Excluding Biofuels, CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    totenergyco2emissions=`Total Energy CO2 Emissions (Million Metric Tons of Carbon Dioxide)`
+    )
+
+#Inspecting the Data
+data$Month <- as.Date(data$Month)
+str(data)
+head(data, 10)
+tail(data, 10)
+summary(data, 10)
+```
+
