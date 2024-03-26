@@ -79,5 +79,6 @@ str(data)
 head(data, 10)
 tail(data, 10)
 summary(data, 10)
+
 ```
 
