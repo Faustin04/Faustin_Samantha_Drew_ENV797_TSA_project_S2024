@@ -26,19 +26,16 @@ library(kableExtra)
 ```
 
 ## CO2 Emissions Forecasting : Predicting U.S. CO2 emissions from energy consumption
+#### Introduction, Motivation, Relevance, Objectives
+CO2 emissions have come under increasing scrutiny in recent years due to their role as a dominant contributor to the greenhouse gas (GHG) effect. Fossil fuels are currently heavily relied upon for energy, transportation, HVAC, and industrial processes. According to the US EPA, greenhouse gas emissions by economic sector in 2022 were: 28% transportation, 25% electric power generation, 23% industry, 13% residential and commercial (primarily HVAC), and 10% agriculture (https://www.epa.gov/ghgemissions/sources-greenhouse-gas-emissions). All these sectors will need to be significantly decarbonized to reduce anthropogenic climate change effects, but electricity generation is widely considered the easiest sector to decarbonize compared to transportation, industry, and agriculture, so it will be the focus of this study.
 
-# Background & Research Question
+Coal power plants have been declining in recent years due to increased emissions scrutiny requiring costly flue gas scrubbing and increased market pressure from relatively cheap natural gas and renewable energy sources. The decommissioning of coal power plants is an important step towards reducing CO2 emissions, but these reductions have been partially offset by an increase in natural gas power generation sparked by the shale gas fracking revolution of the 2010s that is not expected to slow anytime soon (https://www.eia.gov/todayinenergy/detail.php?id=56320). Furthermore, automotive fuel efficiency improvements have largely stagnated and the average fuel economy of new cars sold in the US has actually decreased from 2017-2022 as a result of increased consumer preference for SUVs and trucks (https://www.washingtonpost.com/climate-environment/2024/01/08/fuel-efficiency-suvs-electric-vehicles/). The result is that petroleum-related CO2 emissions have not shown a monotonic downward trend, but rather up-and-down fluctuations that appear to be most strongly correlated with fuel prices (https://www.sciencedirect.com/science/article/abs/pii/S0928765523000623). These competing effects make it difficult to predict the long-term trajectory of CO2 emissions in the US.
 
-1. Coal has been on the decline due to poor economics and increased scrutiny on emissions
-2. Natural gas has concurrently been on the rise due to low prices caused by fracking revolution
-   - Decrease in coal emissions partially offset by new natural gas plants
-3. Project aims to forecast the CO2 emissions from coal, natural gas, and petroleum based on
-historical data and determine if total CO2 emissions are declining as needed to meet climate goals
-  - Biden goal to reduce GHG emissions by 50% below 2005 levels by 2030
+The Biden Administration has taken a strong stance on combating climate change, passing the largest investment act in clean energy and climate action in US history in the Inflation Reduction Act (https://shorturl.at/fJPR4). As part of this agenda, the administration set a target to achieve an economy-wide 50% reduction in GHG emissions from 2005 levels by 2030 (https://shorturl.at/uJMPW). This project aims to forecast CO2 emissions from the energy sector through the year 2030 to understand whether we are currently on pace to meet this target.
 
 # Data description
 
-To verify our research question, we used data from the U.S. Energy Information Administration *Monthly Energy Review February 2024*
+Data from the U.S. Energy Information Administration (EIA) *Monthly Energy Review February 2024* is used to develop a predictive model of carbon emissions by energy resource in this analysis. The US EIA data was selected due to its long history and recording consistency as well as its relevance to the research question of understanding macro CO2 emissions trends. More information on the data set is summarized below:
 
 Data Category: Environment
 Energy Sources: Coal, Natural Gas, Petroleum
@@ -46,21 +43,42 @@ Sampling frequency: Monthly
 Training Data Date Range: Jan 1973-Nov 2023 (n=611)
 Forecast Length: 6 years (2030)
 
+The dataset was downloaded as an excel file and read into this analysis file using read_excel(). The data wrangling required to preprocess the data for analysis is shown below.
+
 ## Loading the Dataset
 
 ```{r}
-data <- read_excel("C:/Users/dreww/OneDrive/Documents/Homework/Time Series/TSA_Sp24/Project/Table_11.1_Carbon_Dioxide_Emissions_From_Energy_Consumption_by_Source.xlsx",  skip = 10)
+data_import <- read_excel("C:/Users/dreww/OneDrive/Documents/Homework/Time Series/TSA_Sp24/Project/Table_11.1_Carbon_Dioxide_Emissions_From_Energy_Consumption_by_Source.xlsx",  skip = 10)
 ```
 
 ##Data wrangling: remaning the variables
 
 ```{r}
 
+#Rename the columns 
+data <- data_import %>%
+  rename (
+    coalimports = `Coal, Including Coal Coke Net Imports, CO2 Emissions (Million Metric Tons of Carbon Dioxide)`, 
+    naturalgas = `Natural Gas, Excluding Supplemental Gaseous Fuels, CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    fuleoil= `Distillate Fuel Oil, Excluding Biodiesel, CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    aviationgas = `Aviation Gasoline CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    hydrocabongas= `Hydrocarbon Gas Liquids CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    jetco2emmissions= `Jet Fuel CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    keroseneco2emissions=`Kerosene CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    lubricantsco2emissions=`Lubricants CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    motosgasolineco2emissions=`Motor Gasoline, Excluding Ethanol, CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    petroleumco2emissions=`Petroleum Coke CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    residualco2emissions=`Residual Fuel Oil CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    otherpetroleumco2emissions=`Other Petroleum Products CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    petroleumlessbioco2emissions=`Petroleum, Excluding Biofuels, CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    totenergyco2emissions=`Total Energy CO2 Emissions (Million Metric Tons of Carbon Dioxide)`
+    )
+
 #Inspecting the Data
 data$Month <- as.Date(data$Month)
 
 #Setting Data to work with
-ourdata <- as.data.frame(data[,c("Month","coalimports", "naturalgas", "petroleumlessbioco2emissions")])
+ourdata <- as.data.frame(data[,c("Month","coalimports", "naturalgas", "petroleumlessbioco2emissions", "totenergyco2emissions")])
 str(ourdata)
 head(ourdata, 10)
 tail(ourdata, 10)
@@ -72,6 +90,7 @@ ts_samantha <- ts(ourdata[,3], start=c(1973,1),frequency=12)
 plot(ts_samantha)
 ts_petrol <- ts(ourdata[,4], start=c(1973,1),frequency=12)
 plot(ts_petrol)
+ts_total <- ts(ourdata[,5], start=c(1973,1),frequency=12)
 ```
 
 
@@ -84,6 +103,41 @@ covid_avg <- rowMeans(cbind(petrol_2019, petrol_2021))
 ts_petrol_clean <- ts_petrol
 ts_petrol_clean[567:578] <- covid_avg
 ```
+
+
+##Forecasting 
+
+```{r message=FALSE, warning=FALSE}
+#create a subset data for training
+n_for = 85
+ts_faustin_train <- subset(ts_faustin,
+                          end = length(ts_faustin)-n_for)
+
+#create a subset data for experiment
+ts_faustin_test <- subset(ts_faustin,
+                      start = length(ts_faustin)-n_for+1, end = length(ts_faustin))
+
+autoplot(ts_faustin_train)
+autoplot(ts_faustin_test)
+```
+
+# Training and test sets
+```{r}
+n_train <- round(0.8*length(ts_petrol))
+n_test <- length(ts_petrol)-n_train
+
+# Petroleum
+petrol_train <- ts_petrol_clean[1:n_train]
+petrol_test <- ts_petrol_clean[(n_train+1):length(ts_petrol)]
+
+# Total Energy Related CO2 emissions
+total_train <- ts_total[1:n_train]
+total_test <- ts_total[(n_train+1):length(ts_total)]
+
+```
+
+
+
 
 ##Data analysis 
 
@@ -115,30 +169,6 @@ faustin_decomp1 <- plot(decompose(ts_faustin1, type = "additive"))
 ```
 
 In either model (short or long), we can notice a seasonal component in out dataset. 
-
-##Forecasting 
-
-```{r message=FALSE, warning=FALSE}
-#create a subset data for training
-n_for = 85
-ts_faustin_train <- subset(ts_faustin,
-                          end = length(ts_faustin)-n_for)
-
-#create a subset data for experiment
-ts_faustin_test <- subset(ts_faustin,
-                      start = length(ts_faustin)-n_for+1, end = length(ts_faustin))
-
-autoplot(ts_faustin_train)
-autoplot(ts_faustin_test)
-```
-# Training and test sets
-```{r}
-n_train <- round(0.8*length(ts_petrol))
-n_test <- length(ts_petrol)-n_train
-petrol_train <- ts_petrol_clean[1:n_train]
-petrol_test <- ts_petrol_clean[(n_train+1):length(ts_petrol)]
-
-```
 
 #Forecasting models 
 #Seasonal naive model
@@ -174,6 +204,16 @@ petrol_arima_acc <- accuracy(petrol_arima_testfor,petrol_test)
 petrol_arima_fit <- auto.arima(ts_petrol_clean)
 petrol_arima_for <- forecast(petrol_arima_fit,h=85)
 ```
+
+# Total ARIMA
+```{r}
+total_arima_train <- auto.arima(total_train)
+total_arima_testfor <- forecast(total_arima_train,h=n_test)
+total_arima_acc <- accuracy(total_arima_testfor,total_test)
+total_arima_fit <- auto.arima(ts_total)
+total_arima_for <- forecast(total_arima_fit,h=85)
+```
+
 # Petroleum TBATS
 ```{r}
 petrol_tbats_train <- tbats(petrol_train)
@@ -183,18 +223,40 @@ petrol_tbats_fit <- tbats(ts_petrol_clean)
 petrol_tbats_for <- forecast(petrol_tbats_fit,h=85)
 ```
 
-# Simple NN
+# Total TBATS
+```{r}
+total_tbats_train <- tbats(total_train)
+total_tbats_testfor <- forecast(total_tbats_train,h=n_test)
+total_tbats_acc <- accuracy(total_tbats_testfor,total_test)
+total_tbats_fit <- tbats(ts_total)
+total_tbats_for <- forecast(total_tbats_fit,h=85)
+```
+
+# Petroleum Simple NN
 
 ```{r}
 # Fit simple (p=24,P=12) NN model
-petrol_nn_train_11 <- nnetar(petrol_train,p=24,P=12)
-petrol_nn_testfor_11 <- forecast(petrol_nn_train_11,h=n_test)
-petrol_nn_acc_11 <- accuracy(petrol_nn_testfor_11,petrol_test)
-cat("Neural Network: p = 1, P = 1, Training Accuracy (MAPE):", petrol_nn_acc_11[9],", Test Accuracy (MAPE):", petrol_nn_acc_11[10])
+petrol_nn_train_2412 <- nnetar(petrol_train,p=24,P=12)
+petrol_nn_testfor_2412 <- forecast(petrol_nn_train_2412,h=n_test)
+petrol_nn_acc_2412 <- accuracy(petrol_nn_testfor_2412,petrol_test)
+cat("Neural Network: p = 24, P = 12, Training Accuracy (MAPE):", petrol_nn_acc_2412[9],", Test Accuracy (MAPE):", petrol_nn_acc_2412[10])
 
 # Train on whole data set and forecast to 2030
-petrol_nn_11_fit <- nnetar(ts_petrol_clean,p=24,P=12)
-petrol_nn_11_for <- forecast(petrol_nn_11_fit, h=85)
+petrol_nn_2412_fit <- nnetar(ts_petrol_clean,p=24,P=12)
+petrol_nn_2412_for <- forecast(petrol_nn_2412_fit, h=85)
+```
+
+# Total Simple NN
+```{r}
+# Fit simple (p=24,P=12) NN model
+total_nn_train_2412 <- nnetar(total_train,p=24,P=12)
+total_nn_testfor_2412 <- forecast(total_nn_train_2412,h=n_test)
+total_nn_acc_2412 <- accuracy(total_nn_testfor_2412,total_test)
+cat("Neural Network: p = 24, P = 12, Training Accuracy (MAPE):", total_nn_acc_2412[9],", Test Accuracy (MAPE):", total_nn_acc_2412[10])
+
+# Train on whole data set and forecast to 2030
+total_nn_2412_fit <- nnetar(ts_total,p=24,P=12)
+total_nn_2412_for <- forecast(total_nn_2412_fit, h=85)
 ```
 
 # Petroleum NN Optimization
@@ -232,14 +294,50 @@ petrol_nn_fit <- nnetar(ts_petrol_clean,p=p_opt,P=P_opt)
 petrol_nn_for <- forecast(petrol_nn_fit, h=85)
 ```
 
-# Plot Forecasts
+
+# Total NN Optimization
+```{r}
+total_nn_acc_min <- 20
+p_opt <- 0
+P_opt <-20
+for (p in seq(0:5)){
+  print(p)
+  for (P in seq(0:5)){
+    total_nn_train <- nnetar(total_train,p=p,P=P)
+    total_nn_testfor <- forecast(total_nn_train,h=n_test)
+    total_nn_acc <- accuracy(total_nn_testfor,total_test)
+    if ((total_nn_acc[9] + total_nn_acc[10]) < total_nn_acc_min){
+      total_nn_acc_min <- total_nn_acc[9] + total_nn_acc[10]
+      p_opt <- p
+      P_opt <- P
+    }
+  }
+}
+print(total_nn_acc_min, p_opt, P_opt)
+
+```
+
+# Optimized Total NN
+```{r}
+# Fit optimized model
+total_nn_train_opt <- nnetar(total_train,p=p_opt,P=P_opt)
+total_nn_testfor_opt <- forecast(total_nn_train_opt,h=n_test)
+total_nn_acc_opt <- accuracy(total_nn_testfor_opt,total_test)
+cat("Optimized Neural Network: p =",p_opt, ", P =",P_opt,", Training Accuracy (MAPE):", total_nn_acc_opt[9],", Test Accuracy (MAPE):", total_nn_acc_opt[10])
+
+# Train on whole data set and forecast to 2030
+total_nn_fit <- nnetar(ts_total,p=p_opt,P=P_opt)
+total_nn_for <- forecast(total_nn_fit, h=85)
+```
+
+# Plot Petroleum Forecasts
 ```{r}
 
 autoplot(ts_petrol,series="Petroleum Time Series History") +
-  autolayer(petrol_nn_fit$fitted,series = "Petroleum NN Model (p = 13, P = 4)") +
-  autolayer(petrol_nn_for$mean, series = "Petroleum Optimized NN Forecast") +
+  #autolayer(petrol_nn_fit$fitted,series = "Petroleum NN Model (p = 13, P = 4)") +
+  #autolayer(petrol_nn_for$mean, series = "Petroleum Optimized NN Forecast") +
   #Add other forecasts to same plot
-  autolayer(petrol_nn_11_for$mean, series = "Petroleum Simple NN Forecast") +
+  autolayer(petrol_nn_2412_for$mean, series = "Petroleum Simple NN Forecast") +
   autolayer(petrol_arima_for$mean, series = "Petroleum ARIMA Forecast") +
   autolayer(petrol_tbats_for$mean, series = "Petroleum TBATS Forecast") +
   
@@ -247,6 +345,24 @@ autoplot(ts_petrol,series="Petroleum Time Series History") +
   ggtitle("Petroleum CO2 Emissions 2030 Forecast") 
 ```
 
+# Plot Total Forecasts
+```{r}
+autoplot(ts_total,series="Total CO2 Emissions Time Series History") +
+  autolayer(total_nn_fit$fitted,series = "Total CO2 NN Model (p = 2, P = 6)") +
+  autolayer(total_nn_for$mean, series = "Total CO2 Optimized NN Forecast") +
+  #Add other forecasts to same plot
+  #autolayer(total_nn_2412_for$mean, series = "Total CO2 Simple NN Forecast") +
+  #autolayer(total_arima_for$mean, series = "Total CO2 ARIMA Forecast") +
+  #autolayer(total_tbats_for$mean, series = "Total CO2 TBATS Forecast") +
+  
+  xlab("Year") + ylab("Total CO2 Emissions (Million Metric Tons CO2)") +
+  ggtitle("Total CO2 Emissions 2030 Forecast") 
+```
+
+# Drew Summary
+The neural network model with p=24 and P=12 model produces the highest combined forecast accuracy on the training and test data for the petroleum time series (MAPE of 0.5% and 4.2%, respectively), so it is selected for the 2030 forecast.
+
+The TBATS model produces the highest combined forecast accuracy on the training and test data for the total CO2 emissions time series (4.3% and 7.6%, respectively), so it is selected for the 2030 forecast.
 
 ```{r}
 autoplot(ts_petrol, series="Petroleum Time Series History") +
