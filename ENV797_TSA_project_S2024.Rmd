@@ -90,6 +90,7 @@ ts_samantha <- ts(ourdata[,3], start=c(1973,1),frequency=12)
 plot(ts_samantha)
 ts_drew <- ts(ourdata[,4], start=c(1973,1),frequency=12)
 plot(ts_drew)
+ts_data <- ts(ourdata, start=c(1973,1),frequency=12)
 ```
 
 ##Data analysis 
@@ -97,19 +98,45 @@ plot(ts_drew)
 # Ploting ACF and PACF
 
 ```{r}
-faustin_acf <- Acf(ts_faustin, lag.max = 40)
-faustin_pacf <-Pacf(ts_faustin, lag.max = 40)
+faustin_acf <- Acf(ts_faustin, lag.max = 40, main = "Coal Imports")
+faustin_pacf <-Pacf(ts_faustin, lag.max = 40, main = "Coal Imports")
+plot_grid (
+  autoplot(faustin_acf, main = "Coal Imports"),
+  autoplot(faustin_pacf, main = "Coal Imports")
+)
+#ploting all data
+#Acf
+data_acf <- Acf(ts_data[,2], lag.max = 40, main = "Coal Imports")
+data_acf1 <- Acf(ts_data[,3], lag.max = 40, main = "Natural Gas")
+data_acf2 <- Acf(ts_data[,4], lag.max = 40, main = "Petroleum")
+#Pacf
+data_Pacf <- Pacf(ts_data[,2], lag.max = 40, main = "Coal Imports")
+data_Pacf1 <- Pacf(ts_data[,3], lag.max = 40, main = "Natural Gas")
+data_Pacf2 <- Pacf(ts_data[,4], lag.max = 40, main = "Petroleum")
 
 plot_grid (
-  autoplot(faustin_acf),
-  autoplot(faustin_pacf)
+  autoplot(data_acf, main = "Coal Imports"),
+  autoplot(data_acf1, main = "Natural Gas"),
+  autoplot(data_acf2, main = "Petroleum"),
+  autoplot(data_Pacf, main = "Coal Imports"),
+  autoplot(data_Pacf1,main = "Natual Gas" ),
+  autoplot(data_Pacf2, main = "Petroleum"),
+  nrow = 2,
+  ncol =3
 )
 ```
 
 # Decomposing Data
 
 ```{r}
-faustin_decomp <- plot(decompose(ts_faustin, type = "additive"))
+#faustin_decomp <- plot(decompose(ts_faustin, type = "additive"))
+coal_decomp <- mstl(ts_data[,2])
+natgas_decomp <- mstl(ts_data[,3])
+petrol_decomp <- mstl(ts_data[,4])
+
+autoplot(coal_decomp, main = "Coal Imports")
+autoplot(natgas_decomp, main = "Natural Gas")
+autoplot(petrol_decomp, main = "Petroleum")
 ```
 
 #Zooming in a small data sample 
@@ -142,8 +169,11 @@ autoplot(ts_faustin_test)
 #Forecasting models 
 #Seasonal naive model
 ```{r}
-seasonal_naive <- snaive(ts_faustin_train, h=12)
+#seasonal_naive <- snaive(ts_faustin_train, h=12) #training Data 
+seasonal_naive <- snaive(ts_faustin, h=85) #the whole dataset
+seasonal_naive_natgas <- snaive(ts_data[,3], h=85)
 summary (seasonal_naive)
+plot(seasonal_naive_natgas)
 plot(seasonal_naive)
 ```
 
@@ -157,13 +187,29 @@ plot(naive)
 
 ## ARIMA model
 ```{r}
-arima_whole<- auto.arima(ts_faustin)
-#arima<- auto.arima(ts_faustin_train)
-arima_for1 <- forecast(arima_whole, h=85)
+#coal forecast
+arima_coal<- auto.arima(ts_faustin)
+#arima<- auto.arima(ts_faustin_train) #train Dataset
+arima_coal_for1 <- forecast(arima_coal, h=85)
 
 autoplot(ts_faustin, series="Original")+
-  autolayer(arima_whole$fitted, series="ARIMA Model")+
-  autolayer(arima_for1$mean, series = "ARIMA Forecast")
+  autolayer(arima_coal$fitted, series="ARIMA Model")+
+  autolayer(arima_coal_for1$mean, series = "ARIMA Forecast")+
+  #geom_smooth(method = "lm", se = FALSE)+
+  labs(title = "Coal Imports forecast",
+       y = "Net Imports",
+       x = "Years")
+
+#petroleum forecast
+arima_petr<- auto.arima(ts_data[,4])
+arima_petr_for <- forecast(arima_petr, h=85)
+
+autoplot(ts_data[,4], series="Original")+
+  autolayer(arima_petr$fitted, series="ARIMA Model")+
+  autolayer(arima_petr_for$mean, series = "ARIMA Forecast")+
+  labs(title = "Petroleum forecast",
+       y = "Petroleum Production",
+       x = "Years")
 ```
 
 #STL + ETS model 
