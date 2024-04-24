@@ -1,0 +1,407 @@
+---
+title: "ENV797_TSA_project_S2024"
+author: "Faustin Kambale Samantha Pace Drew Wolanski"
+date: "2024-03-22"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r, message=FALSE}
+library(lubridate)
+library(ggplot2)
+library(forecast)  
+library(Kendall)
+library(tseries)
+library(outliers)
+library(tidyverse)
+library(cowplot)
+library(sarima)
+library(patchwork)
+library(dplyr)
+library(forecast)
+library(readxl)
+library(kableExtra)
+```
+
+## CO2 Emissions Forecasting : Predicting U.S. CO2 emissions from energy consumption
+
+# Background & Research Question
+
+1. Coal has been on the decline due to poor economics and increased scrutiny on emissions
+2. Natural gas has concurrently been on the rise due to low prices caused by fracking revolution
+   - Decrease in coal emissions partially offset by new natural gas plants
+3. Project aims to forecast the CO2 emissions from coal, natural gas, and petroleum based on
+historical data and determine if total CO2 emissions are declining as needed to meet climate goals
+  - Biden goal to reduce GHG emissions by 50% below 2005 levels by 2030
+
+# Data description
+
+To verify our research question, we used data from the U.S. Energy Information Administration *Monthly Energy Review February 2024*
+
+Data Category: Environment
+Energy Sources: Coal, Natural Gas, Petroleum
+Sampling frequency: Monthly
+Training Data Date Range: Jan 1973-Nov 2023 (n=611)
+Forecast Length: 6 years (2030)
+
+## Loading the Dataset
+
+```{r}
+data <- read_excel("C:/Users/dreww/OneDrive/Documents/Homework/Time Series/TSA_Sp24/Project/Table_11.1_Carbon_Dioxide_Emissions_From_Energy_Consumption_by_Source.xlsx",  skip = 10)
+```
+
+##Data wrangling: remaning the variables
+
+```{r}
+
+#Inspecting the Data
+data$Month <- as.Date(data$Month)
+
+#Setting Data to work with
+ourdata <- as.data.frame(data[,c("Month","coalimports", "naturalgas", "petroleumlessbioco2emissions")])
+str(ourdata)
+head(ourdata, 10)
+tail(ourdata, 10)
+summary(ourdata, 10)
+
+ts_faustin <- ts(ourdata[,2], start=c(1973,1),frequency=12)
+plot(ts_faustin)
+ts_samantha <- ts(ourdata[,3], start=c(1973,1),frequency=12)
+plot(ts_samantha)
+ts_petrol <- ts(ourdata[,4], start=c(1973,1),frequency=12)
+plot(ts_petrol)
+```
+
+
+```{r}
+# Remove 2020
+# Feb 2019-Feb 2020
+petrol_2019 <- ts_petrol[555:566]
+petrol_2021 <- ts_petrol[579:590]
+covid_avg <- rowMeans(cbind(petrol_2019, petrol_2021))
+ts_petrol_clean <- ts_petrol
+ts_petrol_clean[567:578] <- covid_avg
+```
+
+##Data analysis 
+
+# Ploting ACF and PACF
+
+```{r}
+faustin_acf <- Acf(ts_faustin, lag.max = 40)
+faustin_pacf <-Pacf(ts_faustin, lag.max = 40)
+
+plot_grid (
+  autoplot(faustin_acf),
+  autoplot(faustin_pacf)
+)
+```
+
+# Decomposing Data
+
+```{r}
+faustin_decomp <- plot(decompose(ts_faustin, type = "additive"))
+```
+
+#Zooming in a small data sample 
+
+```{r}
+data_filtered <- filter(ourdata, year(Month) >= 2010)
+ts_faustin1 <- ts(data_filtered[,2], start=c(2010,1),frequency=12)
+plot(ts_faustin1)
+faustin_decomp1 <- plot(decompose(ts_faustin1, type = "additive"))
+```
+
+In either model (short or long), we can notice a seasonal component in out dataset. 
+
+##Forecasting 
+
+```{r message=FALSE, warning=FALSE}
+#create a subset data for training
+n_for = 85
+ts_faustin_train <- subset(ts_faustin,
+                          end = length(ts_faustin)-n_for)
+
+#create a subset data for experiment
+ts_faustin_test <- subset(ts_faustin,
+                      start = length(ts_faustin)-n_for+1, end = length(ts_faustin))
+
+autoplot(ts_faustin_train)
+autoplot(ts_faustin_test)
+```
+# Training and test sets
+```{r}
+n_train <- round(0.8*length(ts_petrol))
+n_test <- length(ts_petrol)-n_train
+petrol_train <- ts_petrol_clean[1:n_train]
+petrol_test <- ts_petrol_clean[(n_train+1):length(ts_petrol)]
+
+```
+
+#Forecasting models 
+#Seasonal naive model
+```{r}
+seasonal_naive <- snaive(ts_faustin_train, h=12)
+summary (seasonal_naive)
+plot(seasonal_naive)
+```
+
+#Naive model
+
+```{r}
+naivem <- naive(ts_faustin_train,h=12)
+summary (naivem)
+plot(naive)
+```
+
+## ARIMA model
+```{r}
+arima_whole<- auto.arima(ts_faustin)
+arima<- auto.arima(ts_faustin_train)
+arima_for <- forecast(arima, h=85)
+
+autoplot(ts_faustin, series="Original")+
+  autolayer(arima_whole$fitted, series="ARIMA Model")+
+  autolayer(arima_for1$mean, series = "ARIMA Forecast")
+```
+# Petroleum ARIMA
+```{r}
+petrol_arima_train <- auto.arima(petrol_train)
+petrol_arima_testfor <- forecast(petrol_arima_train,h=n_test)
+petrol_arima_acc <- accuracy(petrol_arima_testfor,petrol_test)
+petrol_arima_fit <- auto.arima(ts_petrol_clean)
+petrol_arima_for <- forecast(petrol_arima_fit,h=85)
+```
+# Petroleum TBATS
+```{r}
+petrol_tbats_train <- tbats(petrol_train)
+petrol_tbats_testfor <- forecast(petrol_tbats_train,h=n_test)
+petrol_tbats_acc <- accuracy(petrol_tbats_testfor,petrol_test)
+petrol_tbats_fit <- tbats(ts_petrol_clean)
+petrol_tbats_for <- forecast(petrol_tbats_fit,h=85)
+```
+
+# Simple NN
+
+```{r}
+# Fit simple (p=24,P=12) NN model
+petrol_nn_train_11 <- nnetar(petrol_train,p=24,P=12)
+petrol_nn_testfor_11 <- forecast(petrol_nn_train_11,h=n_test)
+petrol_nn_acc_11 <- accuracy(petrol_nn_testfor_11,petrol_test)
+cat("Neural Network: p = 1, P = 1, Training Accuracy (MAPE):", petrol_nn_acc_11[9],", Test Accuracy (MAPE):", petrol_nn_acc_11[10])
+
+# Train on whole data set and forecast to 2030
+petrol_nn_11_fit <- nnetar(ts_petrol_clean,p=24,P=12)
+petrol_nn_11_for <- forecast(petrol_nn_11_fit, h=85)
+```
+
+# Petroleum NN Optimization
+```{r}
+petrol_nn_acc_min <- 10
+p_opt <- 0
+P_opt <-20
+for (p in seq(0:15)){
+  print(p)
+  for (P in seq(0:15)){
+    petrol_nn_train <- nnetar(petrol_train,p=p,P=P)
+    petrol_nn_testfor <- forecast(petrol_nn_train,h=n_test)
+    petrol_nn_acc <- accuracy(petrol_nn_testfor,petrol_test)
+    if ((petrol_nn_acc[9] + petrol_nn_acc[10]) < petrol_nn_acc_min){
+      petrol_nn_acc_min <- petrol_nn_acc[9] + petrol_nn_acc[10]
+      p_opt <- p
+      P_opt <- P
+    }
+  }
+}
+print(petrol_nn_acc_min, p_opt, P_opt)
+
+```
+
+# Optimized Petroleum NN
+```{r}
+# Fit optimized model
+petrol_nn_train_opt <- nnetar(petrol_train,p=p_opt,P=P_opt)
+petrol_nn_testfor_opt <- forecast(petrol_nn_train_opt,h=n_test)
+petrol_nn_acc_opt <- accuracy(petrol_nn_testfor_opt,petrol_test)
+cat("Optimized Neural Network: p =",p_opt, ", P =",P_opt,", Training Accuracy (MAPE):", petrol_nn_acc_opt[9],", Test Accuracy (MAPE):", petrol_nn_acc_opt[10])
+
+# Train on whole data set and forecast to 2030
+petrol_nn_fit <- nnetar(ts_petrol_clean,p=p_opt,P=P_opt)
+petrol_nn_for <- forecast(petrol_nn_fit, h=85)
+```
+
+# Plot Forecasts
+```{r}
+
+autoplot(ts_petrol,series="Petroleum Time Series History") +
+  autolayer(petrol_nn_fit$fitted,series = "Petroleum NN Model (p = 13, P = 4)") +
+  autolayer(petrol_nn_for$mean, series = "Petroleum Optimized NN Forecast") +
+  #Add other forecasts to same plot
+  autolayer(petrol_nn_11_for$mean, series = "Petroleum Simple NN Forecast") +
+  autolayer(petrol_arima_for$mean, series = "Petroleum ARIMA Forecast") +
+  autolayer(petrol_tbats_for$mean, series = "Petroleum TBATS Forecast") +
+  
+  xlab("Year") + ylab("Petroleum CO2 Emissions (Million Metric Tons CO2)") +
+  ggtitle("Petroleum CO2 Emissions 2030 Forecast") 
+```
+
+
+```{r}
+autoplot(ts_petrol, series="Petroleum Time Series History") +
+  autolayer(petroleum_forecast$mean, series = "Petroleum ARIMA Forecast") +
+  autolayer(petroleum_arima$fitted, series="Petroleum ARIMA Model")+
+  #scale_color_manual(values = c("purple", "red", "blue")) +
+  xlab("Year") + ylab("Petroleum CO2 Emissions (Million Metric Tons CO2)") +
+  ggtitle("Petroleum CO2 Emissions 2030 Forecast") 
+  # + theme_minimal()
+```
+
+#STL + ETS model 
+
+```{r}
+ETS  <-  stlf(ts_faustin_train,h=12)
+autoplot(ETS) + ylab("Coal imports")
+
+#Plot model + observed data
+autoplot(ts_faustin_train) +
+  autolayer(ETS, series="STL + ETS",PI=FALSE) +
+  ylab("Coal imports")
+```
+
+##ARIMA + FOURIER terms model
+
+```{r ARIMA, echo=TRUE, message=FALSE, warning=FALSE}
+ARIMA_Four_fit <- auto.arima(ts_faustin_train, 
+                             seasonal=FALSE,
+                             lambda=0,
+                             xreg=fourier(ts_faustin_train,
+                                          K=c(6))
+                             )
+# ARIMA Fourier
+ARIMA_Four_model <- forecast(ARIMA_Four_fit,
+                           xreg=fourier(ts_faustin_train,
+                                        K=c(6),
+                                        h=12),
+                           h=12
+                           ) 
+
+#Plot foresting results
+autoplot(ARIMA_Four_model) + ylab("Power Demand")
+
+#Plot model + observed data
+autoplot(ts_faustin_train) +
+  autolayer(ARIMA_Four_model, series="ARIMA_FOURIER",PI=FALSE) +
+  ylab("Coal Import")
+```
+
+# TBATS Model
+
+```{r TBATS, echo=TRUE, message=FALSE, warning=FALSE}
+
+TBATS_fit <- tbats(ts_faustin_train)
+TBATS_for <- forecast(TBATS_fit, h=12)
+
+#Plot foresting results
+autoplot(TBATS_for) +
+  ylab("Coal Import") 
+
+#Plot model + observed data
+autoplot(ts_faustin_train) +
+  autolayer(TBATS_for, series="TBATS",PI=FALSE)+
+  ylab("Coal Import") 
+```
+
+# Neural Network Time Series Forecasts
+```{r NNETAR, echo=TRUE, message=FALSE, warning=FALSE}
+NN_fit <- nnetar(ts_faustin_train,
+                 p=1,
+                 P=0,
+                 K=c(6))
+
+NN_for <- forecast(NN_fit, h=12) 
+
+#Plot foresting results
+autoplot(NN_for) +
+  ylab("Coal Import") 
+
+#Plot model + observed data
+autoplot(ts_faustin_train) +
+  autolayer(NN_for, series="Neural Network",PI=FALSE)+
+  ylab("Coal Import") 
+```
+
+# Model 5: Neural Network Time Series Forecasts
+```{r NNETAR, echo=TRUE, message=FALSE, warning=FALSE}
+NN_fit_reg <- nnetar(ts_faustin_train,
+                 p=1,
+                 P=0,
+                 xreg=fourier(ts_faustin_train, K=c(6)))
+
+NN_for_reg <- forecast(NN_fit_reg, h=12,xreg=fourier(ts_faustin_train, 
+                                          K=c(6),h=12))
+
+#Plot foresting results
+autoplot(NN_for_reg) +
+  ylab("Coal Import") 
+
+#Plot model + observed data
+autoplot(ts_faustin_train) +
+  autolayer(NN_for_reg, series="",PI=FALSE)+
+  ylab("Coal Import") 
+```
+
+## Checking accuracy of the four models
+
+```{r}
+#we can define the cutt off from here
+
+#Model 1: Seasonal Naive
+Seasonaive_score <- accuracy (seasonal_naive$mean, ts_faustin_test)
+
+#Model 2 : Naive model 
+Naive_score <- accuracy(naivem$mean, ts_faustin_test)
+
+#Model 3: ARIMA model 
+ARIMA_score <- accuracy(arima_for$mean, ts_faustin_test)
+
+#Model 4 : ETS model 
+ETS_scores <- accuracy(ETS$mean,ts_faustin_test)  
+
+#Model 5: ARIMA + Fourier 
+ARIMA_Four_scores <- accuracy(ARIMA_Four_model$mean,ts_faustin_test)
+  
+# Model 6:  TBATS 
+TBATS_scores <- accuracy(TBATS_for$mean,ts_faustin_test)
+
+# Model 5:  Neural Network 
+NN_scores <- accuracy(NN_for$mean,ts_faustin_test)
+
+# Model 5:  Neural Network 
+NN_scores_reg <- accuracy(NN_for_reg$mean,ts_faustin_test)
+```
+
+### Compare performance metrics
+
+```{r}
+#create data frame
+scores <- as.data.frame(
+  rbind(Seasonaive_score, Naive_score, ARIMA_score, ETS_scores, ARIMA_Four_scores, TBATS_scores, NN_scores, NN_scores_reg)
+  )
+row.names(scores) <- c("SEANAIV", "NAIVE", "ARMA", "ETS", "ARIMA+Fourier", "TBATS","NN", "NNREG")
+
+#choose model with lowest RMSE
+best_model_index <- which.min(scores[,"RMSE"])
+cat("The best model by RMSE is:", row.names(scores[best_model_index,])) 
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+kbl(scores, 
+      caption = "Forecast Accuracy for Coal Import",
+      digits = array(5,ncol(scores))) %>%
+  kable_styling(full_width = FALSE, position = "center", latex_options = "hold_position") %>%
+  #highlight model with lowest RMSE
+  kable_styling(latex_options="striped", stripe_index = which.min(scores[,"RMSE"]))
+```
