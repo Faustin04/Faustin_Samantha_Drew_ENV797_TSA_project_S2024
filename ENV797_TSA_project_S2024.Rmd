@@ -268,7 +268,7 @@ NN_for_reg <- forecast(NN_fit_reg, h=85,xreg=fourier(coal_ts_train,
 autoplot(NN_for_reg)
 
 #Plot model + observed data
-autoplot(coal_ts_train) +
+ autoplot(coal_ts_train) +
   autolayer(NN_for_reg, series="Neural Network",PI=FALSE) +
   labs(title = "Coal Imports NN+regr forecast",
        y = "Net Imports",
@@ -317,6 +317,7 @@ best_model_index <- which.min(scores[,"RMSE"])
 cat("The best model by RMSE is:", row.names(scores[best_model_index,])) 
 ```
 
+#Producting the accuracy table 
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 kbl(scores, 
@@ -326,23 +327,26 @@ kbl(scores,
   #highlight model with lowest RMSE
   kable_styling(latex_options="striped", stripe_index = which.min(scores[,"RMSE"]))
 ```
-#Plotting the forecasted data 
+Based on the forecasting models, the TBATS model produced the lowest RMSE (9.66603) and the MAPE (9.23292). Therefore, it is the best model according to our data; i.s it is likely to best suit our forecast for the 2030 period.
+
+#Plotting the forecasted values 
 
 ```{r}
-autoplot(coal_ts) +
+autoplot(coal_ts, PI=FALSE, series="Orignal") +
   autolayer(seasonal_naive, PI=FALSE, series="Seasonal Naive")+
   autolayer(naivem, PI = FALSE, series = "Naive") +
-  autolayer(arima_coal_for1, PF=FALSE, series= "Arima")+
+  autolayer(arima_coal_for1, PI=FALSE, series= "Arima")+
   autolayer(ETS, PI=FALSE, series="STL+ETS") +
   autolayer(ARIMA_Four_model, PI=FALSE, series="ARIMA + Fourier") +
   autolayer(TBATS_for,PI=FALSE, series="TBATS") +
   autolayer(NN_for,PI=FALSE, series="NN") +
-  autolayer(NN_for_reg, PI=FALSE, series="NN fourrier")
-  xlab("Day") + ylab("Coal Import") +
+  autolayer(NN_for_reg, PI=FALSE, series="NN fourrier")+
+  xlab("Years") + ylab("Coal Import") +
   guides(colour=guide_legend(title="Forecasted"))
 ```
+Reading the plot, the TBATS forecast line follows the historical trend more closely than others, with less deviations. This confirms the accuracy shown in the table as the TBATS model may accurately handle both the level and seasonality of the data.
 
-# forcasting 2030
+# forcasting 2030 and produce values
 ```{r}
 # Define the start and end date
 start_date <- as.Date("2023-12-01")
@@ -357,11 +361,12 @@ coalforecast <- data.frame(date = dates, load = round(forecasted_values, digits=
 # Save the forecast dataframe to a CSV file
 write.csv(coalforecast, file= "/Users/faustinkambale/Library/CloudStorage/OneDrive-DukeUniversity/Spring 2024 classes/Time Series 4 Energy/Competition/Faustin_Yilun/tsa-s24-competition/coalforecast.csv", row.names = FALSE)
 ```
-#Ploting the forecast
+
+#Ploting the forecast with best model
 ```{r}
-autoplot(ts_faustin) +
+autoplot(coal_ts) +
   autolayer(TBATS_for, series="TBATS",PI=FALSE)+
   autolayer(future_forecast, series = "Coal forecast", PI=FALSE) +
   ylab("Coal Import forecasting") 
 ```
-
+This graph shows the forecasted values using the TBAT model on the historical data. The TBATS model captures the historical seasonality with the trend and provide accurate forecasts. The overall forecast suggest a decrease in coal imports. The TBAT model captures the historical pattern and forecasts the expected continued decrease in coal imports.
