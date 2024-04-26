@@ -1,0 +1,776 @@
+---
+title: 'ENV797 Final Project: CO2 Emissions from Energy Consumption'
+subtitle: "https://github.com/Faustin04/Faustin_Samantha_Drew_ENV797_TSA_project_S2024.git"
+author: "Samantha Pace, Faustin Kambale, Drew Wolanski"
+date: "2024-04-26"
+output: pdf_document
+---
+
+```{r global settings, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r setup, message=FALSE, warning=FALSE, include=FALSE}
+library(lubridate)
+library(ggplot2)
+library(forecast)  
+library(Kendall)
+library(tseries)
+library(outliers)
+library(tidyverse)
+library(cowplot)
+library(sarima)
+library(patchwork)
+library(dplyr)
+library(forecast)
+library(readxl)
+library(kableExtra)
+```
+
+## Forecasting U.S. CO2 Emissions from Energy Consumption
+
+### Introduction, Motivation, Relevance, Objectives
+
+CO2 emissions have come under increasing scrutiny in recent years due to their role as a dominant contributor to the greenhouse gas (GHG) effect. Fossil fuels are currently heavily relied upon for energy, transportation, HVAC, and industrial processes. According to the US EPA, greenhouse gas emissions by economic sector in 2022 were: 28% transportation, 25% electric power generation, 23% industry, 13% residential and commercial (primarily HVAC), and 10% agriculture (https://www.epa.gov/ghgemissions/sources-greenhouse-gas-emissions). All these sectors will need to be significantly decarbonized to reduce anthropogenic climate change effects, but electricity generation is widely considered the easiest sector to decarbonize compared to transportation, industry, and agriculture, so it will be the focus of this study.
+
+Coal power plants have been declining in recent years due to increased emissions scrutiny requiring costly flue gas scrubbing and increased market pressure from relatively cheap natural gas and renewable energy sources. The decommissioning of coal power plants is an important step towards reducing CO2 emissions, but these reductions have been partially offset by an increase in natural gas power generation sparked by the shale gas fracking revolution of the 2010s that is not expected to slow anytime soon (https://www.eia.gov/todayinenergy/detail.php?id=56320). Furthermore, automotive fuel efficiency improvements have largely stagnated and the average fuel economy of new cars sold in the US has actually decreased from 2017-2022 as a result of increased consumer preference for SUVs and trucks (https://www.washingtonpost.com/climate-environment/2024/01/08/fuel-efficiency-suvs-electric-vehicles/). The result is that petroleum-related CO2 emissions have not shown a monotonic downward trend, but rather up-and-down fluctuations that appear to be most strongly correlated with fuel prices (https://www.sciencedirect.com/science/article/abs/pii/S0928765523000623). These competing effects make it difficult to predict the long-term trajectory of CO2 emissions in the US.
+
+The Biden Administration has taken a strong stance on combating climate change, passing the largest investment act in clean energy and climate action in US history in the Inflation Reduction Act (https://shorturl.at/fJPR4). As part of this agenda, the administration set a target to achieve an economy-wide 50% reduction in GHG emissions from 2005 levels by 2030 (https://shorturl.at/uJMPW). This project aims to forecast CO2 emissions from the energy sector through the year 2030 to understand whether we are currently on pace to meet this target.
+
+## Dataset Information
+
+Data from the U.S. Energy Information Administration (EIA) *Monthly Energy Review February 2024* is used to develop a predictive model of carbon emissions by energy resource in this analysis. The US EIA data was selected due to its long history and recording consistency as well as its relevance to the research question of understanding macro CO2 emissions trends. More information on the data set is summarized below:
+
+Data Category: Environment
+Energy Sources: Coal, Natural Gas, Petroleum
+Sampling frequency: Monthly
+Training Data Date Range: Jan 1973-Nov 2023 (n=611)
+Forecast Length: 6 years (2030)
+
+The dataset was downloaded as an excel file and read into this analysis file using read_excel(). The data wrangling required to preprocess the data for analysis is shown below.
+
+## Analysis
+
+For this analysis, we analyzed the total carbon dioxide emissions from energy consumption, as well as CO2 emissions from the coal, natural gas, and petroleum sectors individually due to their unique patterns and trends. The following figures show the time series plot for coal, natural gas, petroleum, and total CO2 emissions in million metric tons from January 1973 to November 2023.
+
+
+```{r data import}
+data_import <- read_excel("./Table_11.1_Carbon_Dioxide_Emissions_From_Energy_Consumption_by_Source.xlsx",  skip = 10)
+```
+
+```{r wrangle}
+# data wrangle
+data <- data_import %>%
+  rename (
+    coalimports = `Coal, Including Coal Coke Net Imports, CO2 Emissions (Million Metric Tons of Carbon Dioxide)`, 
+    naturalgas = `Natural Gas, Excluding Supplemental Gaseous Fuels, CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    fuleoil= `Distillate Fuel Oil, Excluding Biodiesel, CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    aviationgas = `Aviation Gasoline CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    hydrocabongas= `Hydrocarbon Gas Liquids CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    jetco2emmissions= `Jet Fuel CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    keroseneco2emissions=`Kerosene CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    lubricantsco2emissions=`Lubricants CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    motosgasolineco2emissions=`Motor Gasoline, Excluding Ethanol, CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    petroleumco2emissions=`Petroleum Coke CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    residualco2emissions=`Residual Fuel Oil CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    otherpetroleumco2emissions=`Other Petroleum Products CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    petroleumlessbioco2emissions=`Petroleum, Excluding Biofuels, CO2 Emissions (Million Metric Tons of Carbon Dioxide)`,
+    totenergyco2emissions=`Total Energy CO2 Emissions (Million Metric Tons of Carbon Dioxide)`
+    )
+
+#fix date
+data$Month <- as.Date(data$Month)
+
+#Setting Data to work with
+ourdata <- as.data.frame(data[,c("Month","coalimports", "naturalgas", "petroleumlessbioco2emissions", "totenergyco2emissions")])
+```
+
+The time series of coal in Figure 1 shows a clear increasing trend over time from 1973 until about 2009, and a decreasing trend from 2009 through 2023. 
+
+```{r making ts obj}
+#making ts objects
+coal_ts <- ts(ourdata[,2], start=c(1973,1),frequency=12)
+ts_natgas <- ts(ourdata[,3], start=c(1973,1),frequency=12)
+ts_petrol <- ts(ourdata[,4], start=c(1973,1),frequency=12)
+ts_total <- ts(ourdata[,5], start=c(1973,1),frequency=12)
+```
+
+
+```{r, ts coal, fig.height=5, fig.align='center', out.width="70%", fig.cap="\\label{fig:figs} Time Series Plot for Coal Emissions"}
+plot(coal_ts) + 
+  title("Coal in Million Metric Tons Jan 1973 - Nov 2023") 
+```
+
+The time series of natural gas in Figure 2 demonstrates a predictable wave-like pattern reflecting seasonality, and a generally increasing trend from the late 1980s through 2023.
+
+```{r, ts nat gas, fig.height=5, fig.align='center', out.width="70%", fig.cap="\\label{fig:figs} Time Series Plot for Natural Gas Emissions"}
+plot(ts_natgas) +
+  title("Natural Gas in Million Metric Tons Jan 1973 - Nov 2023")
+```
+
+For time series plot of petroleum in Figure 3, the trends are more irregular than coal or natural gas, with a major irregularity in 2020 due to effects from the COVID-19 pandemic.
+
+```{r, ts petrol, fig.height=5, fig.align='center', out.width="70%", fig.cap="\\label{fig:figs} Time Series Plot for Petroleum"}
+plot(ts_petrol) +
+  title("Petroleum in Million Metric Tons Jan 1973 - Nov 2023")
+```
+
+Finally, the total CO2 emissions from energy consumption seen in Figure 4 illustrates a general increasing trend from the early 1980s through 2009, when emissions began a declining trend with irregularities in 2020.
+
+```{r, ts total emissions, fig.height=5, fig.align='center', out.width="70%", fig.cap="\\label{fig:figs} Time Series Plot for Total CO2 Emissions from Energy Consumption"}
+plot(ts_total) +
+  title("Total CO2 Emissions in US in Million Metric Tons 1973 - 2023")
+```
+
+The following subsections will analyze coal, natural gas, petroleum, and total emissions through time series model fitting and forecasting through 2030 in order to evaluate where we may stand regarding the goal of reducing emissions by 2030 to 50% of the 2005 levels.
+
+### Coal CO2 Emissions
+
+Reading the ACF we clearly notice a gradual decline and positive autororrelation in our Coal import data set. This pattern suggest that the data is non-stationary. The PACF, with a cut off after lag 1. Visual look suggest the presence of seasonal effect in our data set.The Pac anf Acf plots suggest that a AR (1) model can best fit the data.
+
+```{r coal acf/pacf, fig.height=4, fig.align='center', out.width="70%", fig.cap="\\label{fig:figs} Coal ACF and PACF"}
+coal_acf <- Acf(coal_ts, lag.max = 40, main = "Co2 Emission from Coal Imports", plot = FALSE)
+coal_pacf <-Pacf(coal_ts, lag.max = 40, main = "Coal Imports", plot = FALSE)
+plot_grid (
+  autoplot(coal_acf, main = "Coal Imports"),
+  autoplot(coal_pacf, main = "Coal Imports")
+)
+```
+
+
+```{r coal decomp, fig.height=5, fig.align='center', out.width="70%", fig.cap="\\label{fig:figs} Coal Data Decomposition"}
+coal_decomp <- mstl(coal_ts)
+autoplot(coal_decomp, main = "CO2 Emmission from Coal Imports")
+```
+
+Decomposing the data set gives a clear picture of the decreasing trend in the coal import data and the presence of the seasonality in our data set. To check a little deeper, we zoom in with a small time period. As we could have noticed before, the subset of the coal data from 2010 - 2023 shows the presence of a seasonality component and a decreasing trend.
+
+To fit models, we subset our data into train and test data for a horizon of 85 months. Eighty-five months is the length of time we will ultimately forecast in order to reach through 2030, so we use this for the test section of the data for coal import data. The train data set serves to train the model based on the historical data whereas the test data set serves for testing the forecast. 
+
+```{r message=FALSE, warning=FALSE}
+#create train and test
+n_for = 85
+coal_ts_train <- subset(coal_ts,end = length(coal_ts)-n_for)
+coal_ts_test <- subset(coal_ts, start = length(coal_ts)-n_for+1)
+```
+
+The following eight models are fit to the coal data: Seasonal naive, Naive, Arima, Stl+Ets, Arima + Fourier Term, Tbats, Neural Network, and Neural Network + Fourier. After fitting each model to the train data, they will forecast on the test dataset and accuracy tests will be utilized to determine which model is the best fitting one. Once the best model is determined, that model will be fitted to the dataset and used to forecast through 2030.
+
+```{r coal seasonal naive, message=FALSE, warning=FALSE}
+coal_seasonal_naive <- snaive(coal_ts_train, h=85) #the whole coal dataset
+#summary (seasonal_naive)
+```
+
+```{r coal naive}
+coal_naivem <- naive(coal_ts_train, h=85)
+#autoplot(coal_naivem) +
+       # labs(title = "Coal Imports Naive forecast", 
+       #      y = "Net Imports", 
+      #       x = "Years")
+```
+
+```{r coal arima}
+#coal forecast
+arima_coal<- auto.arima(coal_ts_train)
+arima_coal_for1 <- forecast(arima_coal, h=85)
+#autoplot(coal_ts_train, series="Original")+
+ # autolayer(arima_coal$fitted, series="ARIMA Model")+
+ # autolayer(arima_coal_for1$mean, series = "ARIMA Forecast")+
+ # labs(title = "Coal Imports Arima forecast",
+ #      y = "Net Imports",
+ #      x = "Years")
+```
+
+```{r coal STL + ETS model}
+#STL + ETS model 
+coal_ETS  <-  stlf(coal_ts_train, h=85)
+#autoplot(coal_ETS) + ylab("Coal imports")
+#autoplot(coal_ts_train) +
+#  autolayer(coal_ETS, series="STL + ETS",PI=FALSE) +
+#  labs(title = "Coal Imports ETS forecast",
+ #      y = "Net Imports",
+ #      x = "Years")
+```
+
+```{r ARIMA and fourier, echo=FALSE, message=FALSE, warning=FALSE}
+##ARIMA + FOURIER terms model
+coal_ARIMA_Four_fit <- auto.arima(coal_ts_train, 
+                             seasonal=FALSE,
+                             lambda=0,
+                             xreg=fourier(coal_ts_train,
+                                          K=c(6))
+                             )
+# ARIMA Fourier
+coal_ARIMA_Four_model <- forecast(coal_ARIMA_Four_fit,
+                           xreg=fourier(coal_ts_train,
+                                        K=c(6),
+                                        h=85),
+                           h=85
+                           ) 
+
+#Plot foresting results
+#autoplot(coal_ARIMA_Four_model) + ylab("Coal Import")
+
+#Plot model + observed data
+#autoplot(coal_ts_train) +
+#  autolayer(coal_ARIMA_Four_model, series="ARIMA_FOURIER",PI=FALSE) +
+#  labs(title = "Coal Imports Arima Fourrier forecast",
+#       y = "Net Imports",
+#       x = "Years")
+```
+
+```{r coal TBATS, echo=FALSE, message=FALSE, warning=FALSE}
+# TBATS Model
+coal_TBATS_fit <- tbats(coal_ts_train)
+coal_TBATS_for <- forecast(coal_TBATS_fit, h=85)
+
+#Plot foresting results
+#autoplot(coal_TBATS_for)
+
+#Plot model + observed data
+#autoplot(coal_ts_train) +
+#  autolayer(TBATS_for, series="TBATS",PI=FALSE)+
+#  labs(title = "Coal Imports TBATS forecast",
+#       y = "Net Imports",
+ #      x = "Years")
+```
+
+```{r NNETAR, message=FALSE, warning=FALSE}
+# Neural Network Time Series Forecasts
+
+coal_NN_fit <- nnetar(coal_ts_train, p=1, P=0, K=c(6))
+coal_NN_for <- forecast(coal_NN_fit, h=85) 
+
+#Plot foresting results
+#autoplot(coal_NN_for)
+
+#Plot model + observed data
+#autoplot(coal_ts_train) +
+#  autolayer(NN_for, series="Neural Network",PI=FALSE)+
+#  labs(title = "Coal Imports NN forecast",
+#       y = "Net Imports",
+#       x = "Years") 
+```
+
+```{r coal NNETAR, message=FALSE, warning=FALSE}
+
+# Neural Network +fourrier Forecasts
+coal_NN_fit_reg <- nnetar(coal_ts_train, p=1,  P=0,
+                 xreg=fourier(coal_ts_train, K=c(6)))
+
+coal_NN_for_reg <- forecast(coal_NN_fit_reg, h=85,xreg=fourier(coal_ts_train, 
+                                          K=c(6),h=85))
+
+#Plot foresting results
+#autoplot(coal_NN_for_reg)
+
+#Plot model + observed data
+# autoplot(coal_ts_train) +
+#  autolayer(NN_for_reg, series="Neural Network",PI=FALSE) +
+#  labs(title = "Coal Imports NN+regr forecast",
+#       y = "Net Imports",
+#       x = "Years")
+```
+
+```{r coal accuracy}
+## Checking accuracy of the eight models
+
+#Model 1: Seasonal Naive
+coal_Seasonaive_score <- accuracy (coal_seasonal_naive$mean, coal_ts_test)
+#Model 2 : Naive model 
+coal_Naive_score <- accuracy(coal_naivem$mean, coal_ts_test)
+#Model 3: ARIMA model 
+coal_ARIMA_score <- accuracy(arima_coal_for1$mean, coal_ts_test)
+#Model 4 : ETS model 
+coal_ETS_scores <- accuracy(coal_ETS$mean,coal_ts_test)  
+#Model 5: ARIMA + Fourier 
+coal_ARIMA_Four_scores <- accuracy(coal_ARIMA_Four_model$mean,coal_ts_test)
+# Model 6:  TBATS 
+coal_TBATS_scores <- accuracy(coal_TBATS_for$mean,coal_ts_test)
+# Model 7:  Neural Network 
+coal_NN_scores <- accuracy(coal_NN_for$mean,coal_ts_test)
+# Model 8:  Neural Network 
+coal_NN_scores_reg <- accuracy(coal_NN_for_reg$mean,coal_ts_test)
+```
+
+```{r coal perform metrics}
+### Compare performance metrics
+#create data frame
+coal_scores <- as.data.frame(
+  rbind(coal_Seasonaive_score, coal_Naive_score, coal_ARIMA_score, coal_ETS_scores, coal_ARIMA_Four_scores, coal_TBATS_scores, coal_NN_scores, coal_NN_scores_reg)
+  )
+row.names(coal_scores) <- c("SEANAIV", "NAIVE", "ARIMA", "ETS", "ARIMA+Fourier", "TBATS","NN", "NNREG")
+
+#choose model with lowest RMSE
+best_model_index <- which.min(coal_scores[,"RMSE"])
+cat("The best model by RMSE is:", row.names(coal_scores[best_model_index,])) 
+```
+
+```{r coal table, message=FALSE, warning=FALSE}
+# accuracy table 
+kbl(coal_scores, 
+      caption = "Forecast Accuracy for Coal Import",
+      digits = array(5,ncol(coal_scores))) %>%
+  kable_styling(full_width = FALSE, position = "center", latex_options = "hold_position") %>%
+  #highlight model with lowest RMSE
+  kable_styling(latex_options="striped", stripe_index = which.min(coal_scores[,"RMSE"]))
+```
+
+Based on the forecasting models, the TBATS model produced the lowest RMSE (9.66603) and the MAPE (9.23292). Therefore, it is the best model according to our data; it is likely to best suit our forecast for the 2030 period.
+
+```{r all models plot 1, fig.height=5, fig.align='center', out.width="70%", fig.cap="\\label{fig:figs} Forecasting the Coal Training Data"}
+autoplot(coal_ts, PI=FALSE, series="Orignal", title = "Forecasting the Coal Training Data") +
+  autolayer(coal_seasonal_naive, PI=FALSE, series="Seasonal Naive")+
+  autolayer(coal_naivem, PI = FALSE, series = "Naive") +
+  autolayer(arima_coal_for1, PI=FALSE, series= "Arima")+
+  autolayer(coal_ETS, PI=FALSE, series="STL+ETS") +
+  autolayer(coal_ARIMA_Four_model, PI=FALSE, series="ARIMA + Fourier") +
+  autolayer(coal_TBATS_for,PI=FALSE, series="TBATS") +
+  autolayer(coal_NN_for,PI=FALSE, series="NN") +
+  autolayer(coal_NN_for_reg, PI=FALSE, series="NN fourrier")+
+  xlab("Years") + ylab("Coal Import") + 
+  guides(colour=guide_legend(title="Forecasted"))
+```
+
+Reading the plot, the TBATS forecast line follows the historical trend more closely than others, with less deviations. This confirms the accuracy shown in the table as the TBATS model may accurately handle both the level and seasonality of the data. Since TBATS fits the historic training data best, we will use TBATS to fit the entire data set and forecast to 2030.
+
+```{r coal forecasting to 2030}
+# forcasting 2030 and produce values
+start_date <- as.Date("2023-12-01")
+end_date <- as.Date("2030-12-31")
+dates <- seq.Date(start_date, end_date, by="month")
+
+coal_Best_model <- tbats(coal_ts)
+coal_future_forecast <- forecast(coal_Best_model, h=85)
+
+coal_forecasted_values <- coal_future_forecast$mean
+coal_2030forecast <- data.frame(date = dates, load = round(coal_forecasted_values, digits=0))
+# Save the forecast dataframe to a CSV file
+#write.csv(coalforecast, file= "/Users/faustinkambale/Library/CloudStorage/OneDrive-DukeUniversity/Spring 2024 classes/Time Series 4 Energy/Competition/Faustin_Yilun/tsa-s24-competition/coalforecast.csv", row.names = FALSE)
+```
+
+```{r, fig.height=4, fig.align='center', out.width="70%", fig.cap="\\label{fig:figs} Forecasting the Coal to 2030"}
+#Ploting the forecast with best model
+autoplot(coal_ts) +
+  autolayer(coal_TBATS_for, series="TBATS",PI=FALSE)+
+  autolayer(coal_future_forecast, series = "Coal forecast", PI=FALSE) +
+  ylab("Coal Import forecasting (Million Metric Tons") 
+```
+
+This graph shows the forecasted values using the TBATS model on the historical data. The TBATS model captures the historical seasonality with the trend and provide accurate forecasts. The overall forecast suggest a decrease in coal imports. The TBAT model captures the historical pattern and forecasts the expected continued decrease in coal imports.
+
+\newpage
+
+### Natural Gas CO2 Emissions
+
+The ACF and PACF show that a clear seasonality is present in the data. Additionally, we can see there is a slow decline in the autoregressive component, meaning there is a high linear dependence over time.
+
+```{r nat gas acf/pacf, fig.height=4, fig.align='center', out.width="70%", fig.cap="\\label{fig:figs} Nat Gas ACF and PACF"}
+natgas_acf <- Acf(ts_natgas, lag.max = 40, main = "CO2 Emission from Natural Gas", plot = FALSE)
+natgas_pacf <-Pacf(ts_natgas, lag.max = 40, main = "CO2 Emission from Natural Gas", plot = FALSE)
+plot_grid (
+  autoplot(coal_acf, main = "Nat Gas CO2 Emissions"),
+  autoplot(coal_pacf, main = "Nat Gas CO2 Emissions")
+)
+```
+
+```{r nat gas decomp, fig.height=5, fig.align='center', out.width="70%", fig.cap="\\label{fig:figs} Nat Gas Data Decomposition"}
+natgas_decomp <- mstl(ts_natgas)
+autoplot(natgas_decomp, main = "CO2 Emmission from Nat Gas")
+```
+
+The decomposed time series illustrates the increasing trend over time, the strong seasonal component, and that the remainder appears to be random. Next, we subset the data into the training data, which will serve to train the model based on the historical data, and testing data, which will be used to forecast the model and compare the accuracy. For the purposes of the natural gas data set, we will have a test data set with n=85 because that is the length of time we will ultimately forecast out through to reach 2030. This equates to about 14% of the existing historic data set.
+
+The following models were used for the training set of the natural gas CO2 emissions data: ETS, ARIMA using auto.arima(), Simple Neural Network (with p=12, P=6), and ARIMA with Fourier terms (K=6). Originally, TBATS was also included but produced the same results as the ARIMA model so it was ultimately removed. The table below illustrates the accuracy figures for the models used.
+
+```{r nat gas test/train, message=FALSE, warning=FALSE}
+#create train and test
+n_for = 85
+natgas_ts_train <- subset(ts_natgas,end = length(ts_natgas)-n_for)
+#plot(natgas_ts_train)
+natgas_ts_test <- subset(ts_natgas, start = length(ts_natgas)-n_for+1)
+#plot(natgas_ts_test)
+```
+
+```{r nat gas ETS}
+#STL + ETS model 
+natgas_ETS_train  <-  stlf(natgas_ts_train, h=85)
+natgas_ETS_acc <- accuracy(natgas_ETS_train$mean, natgas_ts_test)
+```
+
+```{r nat gas arima}
+# Nat gas ARIMA
+natgas_arima_train <- auto.arima(natgas_ts_train)
+natgas_arima_testfor <- forecast(natgas_ts_train,h=n_for)
+natgas_arima_acc <- accuracy(natgas_arima_testfor$mean, natgas_ts_test)
+```
+
+```{r nat gas TBATS}
+#natgas_tbats_train <- tbats(natgas_ts_train)
+natgas_tbats_testfor <- forecast(natgas_ts_train,h=85)
+#natgas_tbats_acc <- accuracy(natgas_tbats_testfor$mean,natgas_ts_test)
+```
+
+```{r natgas simple nn}
+# Simple NN (p=12,P=6) NN model
+natgas_simplenn_train <- nnetar(natgas_ts_train,p=12,P=6)
+natgas_simplenn_testfor <- forecast(natgas_simplenn_train,h=n_for)
+natgas_simplenn_acc <- accuracy(natgas_simplenn_testfor$mean,natgas_ts_test)
+#cat("Neural Network: p = 12, P = 6, Training Accuracy (MAPE):", natgas_simplenn_acc[9],", Test Accuracy (MAPE):", natgas_simplenn_acc[10])
+```
+
+```{r nat gas ARIMA and fourier}
+##ARIMA + FOURIER terms model
+natgas_ARIMA_Four_fit <- auto.arima(natgas_ts_train, 
+                             seasonal=FALSE,
+                             lambda=0,
+                             xreg=fourier(natgas_ts_train,
+                                          K=c(6))
+                             )
+# ARIMA Fourier
+natgas_ARIMA_Four_model <- forecast(natgas_ARIMA_Four_fit,
+                           xreg=fourier(natgas_ts_train,
+                                        K=c(6),
+                                        h=85),
+                           h=85
+                           ) 
+
+natgas_arima_four_acc <- accuracy(natgas_ARIMA_Four_model$mean,natgas_ts_test)
+```
+
+
+```{r nat gas perform metrics}
+### Compare performance metrics
+natgas_scores <- as.data.frame(
+  rbind(natgas_ETS_acc, natgas_arima_acc, natgas_simplenn_acc, natgas_arima_four_acc))
+row.names(natgas_scores) <- c("ETS", "ARIMA","Simple NN", "ARIMA with Fourier")
+
+#choose model with lowest RMSE
+best_model_index <- which.min(natgas_scores[,"RMSE"])
+cat("The best model by RMSE is:", row.names(natgas_scores[best_model_index,])) 
+```
+
+```{r nat gas table, message=FALSE, warning=FALSE}
+# accuracy table 
+kbl(natgas_scores, 
+      caption = "Forecast Accuracy for Natural Gas Emissions on Test Dataset",
+      digits = array(5,ncol(natgas_scores))) %>%
+  kable_styling(full_width = FALSE, position = "center", latex_options = "hold_position") %>%
+  #highlight model with lowest RMSE
+  kable_styling(latex_options="striped", stripe_index = which.min(natgas_scores[,"RMSE"]))
+```
+
+Based on the forecasting models, the Simple NN model produced the lowest RMSE (11.99552) and the MAPE (7.43899). Therefore, it is the best model according to our data; it is likely to best suit our forecast for the 2030 period. The following plot displays the original data and four models.
+
+```{r all models plot nat gas, fig.height=5, fig.align='center', out.width="70%", fig.cap="\\label{fig:figs} Forecasting the Natural Gas Training Data"}
+autoplot(ts_natgas, PI=FALSE, series="Orignal", title = "Forecasting the Natural Gas Emissions") +
+  autolayer(natgas_arima_testfor, PI=FALSE, series= "Arima")+
+  autolayer(natgas_ETS_train, PI=FALSE, series="STL+ETS") +
+  autolayer(natgas_ARIMA_Four_model, PI=FALSE, series="ARIMA + Fourier") +
+  autolayer(natgas_simplenn_testfor,PI=FALSE, series="Simple NN") +
+#  autolayer(natgas_tbats_testfor,PI=FALSE, series="TBATS") +
+  xlab("Years") + ylab("CO2 Emissions (Million Metric Tons)") + 
+  guides(colour=guide_legend(title="Forecasted"))
+```
+
+Based on the accuracy metrics and the plot, the best fitting model for the natural gas emissions is the Simple NN, which will now be fitted to the whole dataset and forecasted through 2030.
+
+```{r nat gas 2030 forecast, fig.height=5, fig.align='center', out.width="70%", fig.cap="\\label{fig:figs} Natural Gas Emissions Forecast through 2030"}
+natgas_best_model <- nnetar(ts_natgas, p=12, P=6)
+natgas_2030for <- forecast(natgas_best_model, h=85)  
+
+#plot(natgas_2030for)
+
+#Ploting the forecast with best model
+autoplot(ts_natgas) +
+  autolayer(natgas_simplenn_testfor, series="Simple NN Test Data",PI=FALSE)+
+ # autolayer(natgas_simplenn_train, series="Simple NN Train Data",PI=FALSE)+
+  autolayer(natgas_2030for, series = "Nat Gas Emissions forecast", PI=FALSE) +
+  ylab("Nat Gas Emissions (Million Metric Tons") +
+  ggtitle("Natural Gas Emissions Test Data and 2030 Forecast")
+```
+\newpage
+
+### Petroleum CO2 Emissions
+
+In the initial Petroleum emissions time series, we noticed that there was an irregular decrease in 2020 due to the effects of the pandemic, so for the purposes of forecasting into the future, we decided to remove the 2020 data from our analysis. In place of the observed 2020 data points, we used an average of 2019 and 2021 to clean the data and reduce the irregularities.
+
+For the purposes of the analysis of petroleum emissions, we used 80% of the dataset to train the model and the remaining 20% to test the model for accuracy and best fit. The following models were used to fit to the train data: ARIMA, TBATS, Simple NN (p=24, P=12), and an optimized NN model.
+
+```{r petrol remove covid year}
+# Remove 2020
+# Feb 2019-Feb 2020
+petrol_2019 <- ts_petrol[555:566]
+petrol_2021 <- ts_petrol[579:590]
+covid_avg <- rowMeans(cbind(petrol_2019, petrol_2021))
+ts_petrol_clean <- ts_petrol
+ts_petrol_clean[567:578] <- covid_avg
+```
+
+```{r petrol test and train}
+# Training and test sets
+n_train <- round(0.8*length(ts_petrol))
+n_test <- length(ts_petrol)-n_train
+
+# Petroleum
+petrol_train <- ts_petrol_clean[1:n_train]
+petrol_test <- ts_petrol_clean[(n_train+1):length(ts_petrol)]
+```
+
+```{r petrol arima}
+# Petroleum ARIMA
+
+petrol_arima_train <- auto.arima(petrol_train)
+petrol_arima_testfor <- forecast(petrol_arima_train,h=n_test)
+petrol_arima_acc <- accuracy(petrol_arima_testfor,petrol_test)
+petrol_arima_fit <- auto.arima(ts_petrol_clean)
+petrol_arima_for <- forecast(petrol_arima_fit,h=85)
+```
+
+```{r petrol tbats}
+# Petroleum TBATS
+
+petrol_tbats_train <- tbats(petrol_train)
+petrol_tbats_testfor <- forecast(petrol_tbats_train,h=n_test)
+petrol_tbats_acc <- accuracy(petrol_tbats_testfor,petrol_test)
+petrol_tbats_fit <- tbats(ts_petrol_clean)
+petrol_tbats_for <- forecast(petrol_tbats_fit,h=85)
+```
+
+```{r petrol simple nn}
+# Fit simple nn (p=24,P=12) NN model
+petrol_nn_train_2412 <- nnetar(petrol_train,p=24,P=12)
+petrol_nn_testfor_2412 <- forecast(petrol_nn_train_2412,h=n_test)
+petrol_nn_acc_2412 <- accuracy(petrol_nn_testfor_2412,petrol_test)
+cat("Neural Network: p = 24, P = 12, Training Accuracy (MAPE):", petrol_nn_acc_2412[9],", Test Accuracy (MAPE):", petrol_nn_acc_2412[10])
+
+# Train on whole data set and forecast to 2030
+petrol_nn_2412_fit <- nnetar(ts_petrol_clean,p=24,P=12)
+petrol_nn_2412_for <- forecast(petrol_nn_2412_fit, h=85)
+```
+
+```{r petrol nn opt}
+# Petroleum NN Optimization
+petrol_nn_acc_min <- 10
+p_opt <- 0
+P_opt <-20
+for (p in seq(0:15)){
+  print(p)
+  for (P in seq(0:15)){
+    petrol_nn_train <- nnetar(petrol_train,p=p,P=P)
+    petrol_nn_testfor <- forecast(petrol_nn_train,h=n_test)
+    petrol_nn_acc <- accuracy(petrol_nn_testfor,petrol_test)
+    if ((petrol_nn_acc[9] + petrol_nn_acc[10]) < petrol_nn_acc_min){
+      petrol_nn_acc_min <- petrol_nn_acc[9] + petrol_nn_acc[10]
+      p_opt <- p
+      P_opt <- P
+    }
+  }
+}
+print(petrol_nn_acc_min, p_opt, P_opt)
+
+```
+
+```{r petrol opt model}
+# Fit optimized model
+petrol_nn_train_opt <- nnetar(petrol_train,p=p_opt,P=P_opt)
+petrol_nn_testfor_opt <- forecast(petrol_nn_train_opt,h=n_test)
+petrol_nn_acc_opt <- accuracy(petrol_nn_testfor_opt,petrol_test)
+cat("Optimized Neural Network: p =",p_opt, ", P =",P_opt,", Training Accuracy (MAPE):", petrol_nn_acc_opt[9],", Test Accuracy (MAPE):", petrol_nn_acc_opt[10])
+
+# Train on whole data set and forecast to 2030
+petrol_nn_fit <- nnetar(ts_petrol_clean,p=p_opt,P=P_opt)
+petrol_nn_for <- forecast(petrol_nn_fit, h=85)
+```
+
+# Plot Petroleum Forecasts
+```{r forecasts, fig.height=5, fig.align='center', out.width="70%", fig.cap="\\label{fig:figs} Petroleum Emissions Forecast through 2030"}
+
+autoplot(ts_petrol,series="Petroleum Time Series History") +
+  #autolayer(petrol_nn_fit$fitted,series = "Petroleum NN Model (p = 13, P = 4)") +
+  #autolayer(petrol_nn_for$mean, series = "Petroleum Optimized NN Forecast") +
+  #Add other forecasts to same plot
+  autolayer(petrol_nn_2412_for$mean, series = "Petroleum Simple NN Forecast") +
+  autolayer(petrol_arima_for$mean, series = "Petroleum ARIMA Forecast") +
+  autolayer(petrol_tbats_for$mean, series = "Petroleum TBATS Forecast") +
+  
+  xlab("Year") + ylab("Petroleum CO2 Emissions (Million Metric Tons CO2)") +
+  ggtitle("Petroleum CO2 Emissions 2030 Forecasts") 
+```
+
+The neural network model with p=24 and P=12 model produces the highest combined forecast accuracy on the training and test data for the petroleum time series (MAPE of 0.5% and 4.2%, respectively), so it is selected for the 2030 forecast.
+
+
+```{r petrol forecast plot, fig.height=5, fig.align='center', out.width="70%", fig.cap="\\label{fig:figs} Petroleum Emissios Forescasst by Best Model" }
+
+# plot with forecast
+autoplot(ts_petrol_clean) +
+  autolayer(petrol_nn_for, series = "Optimized NN Model Forecast") +
+    ylab("Petroleum Emissions (Million Metric Tons") +
+  ggtitle("Petroleum Emissions 2030 Forecast with Best Fit Model")
+
+```
+
+### Total CO2 Emissions
+
+Similar to the previous sections, we analyzed the total CO2 emissions generated from energy consumption by splitting the historical data into a training data set with 80% of the original data, and a testing data set with the remaining 20% of the data. We used the following models to fit to the training data and determine the best model with the highest accuracy. The models tested include: ARIMA, TBATS, Simple Neural Network, and an Optimized Neural Network model.
+
+```{r total e test and train }
+# train and test data sets
+# Total Energy Related CO2 emissions
+total_train <- ts_total[1:n_train]
+total_test <- ts_total[(n_train+1):length(ts_total)]
+```
+
+```{r total arima}
+# Total ARIMA
+total_arima_train <- auto.arima(total_train)
+total_arima_testfor <- forecast(total_arima_train,h=n_test)
+total_arima_acc <- accuracy(total_arima_testfor,total_test)
+total_arima_fit <- auto.arima(ts_total)
+total_arima_for <- forecast(total_arima_fit,h=85)
+```
+
+```{r total tbats}
+# Total TBATS
+total_tbats_train <- tbats(total_train)
+total_tbats_testfor <- forecast(total_tbats_train,h=n_test)
+total_tbats_acc <- accuracy(total_tbats_testfor,total_test)
+total_tbats_fit <- tbats(ts_total)
+total_tbats_for <- forecast(total_tbats_fit,h=85)
+```
+
+```{r}
+# Total Simple NN
+# Fit simple (p=24,P=12) NN model
+total_nn_train_2412 <- nnetar(total_train,p=24,P=12)
+total_nn_testfor_2412 <- forecast(total_nn_train_2412,h=n_test)
+total_nn_acc_2412 <- accuracy(total_nn_testfor_2412,total_test)
+cat("Neural Network: p = 24, P = 12, Training Accuracy (MAPE):", total_nn_acc_2412[9],", Test Accuracy (MAPE):", total_nn_acc_2412[10])
+
+# Train on whole data set and forecast to 2030
+total_nn_2412_fit <- nnetar(ts_total,p=24,P=12)
+total_nn_2412_for <- forecast(total_nn_2412_fit, h=85)
+```
+
+```{r}
+# Total NN Optimization
+total_nn_acc_min <- 20
+p_opt <- 0
+P_opt <-20
+for (p in seq(0:5)){
+  print(p)
+  for (P in seq(0:5)){
+    total_nn_train <- nnetar(total_train,p=p,P=P)
+    total_nn_testfor <- forecast(total_nn_train,h=n_test)
+    total_nn_acc <- accuracy(total_nn_testfor,total_test)
+    if ((total_nn_acc[9] + total_nn_acc[10]) < total_nn_acc_min){
+      total_nn_acc_min <- total_nn_acc[9] + total_nn_acc[10]
+      p_opt <- p
+      P_opt <- P
+    }
+  }
+}
+print(total_nn_acc_min, p_opt, P_opt)
+
+```
+
+```{r}
+# Optimized Total NN
+# Fit optimized model
+total_nn_train_opt <- nnetar(total_train,p=p_opt,P=P_opt)
+total_nn_testfor_opt <- forecast(total_nn_train_opt,h=n_test)
+total_nn_acc_opt <- accuracy(total_nn_testfor_opt,total_test)
+cat("Optimized Neural Network: p =",p_opt, ", P =",P_opt,", Training Accuracy (MAPE):", total_nn_acc_opt[9],", Test Accuracy (MAPE):", total_nn_acc_opt[10])
+
+# Train on whole data set and forecast to 2030
+total_nn_fit <- nnetar(ts_total,p=p_opt,P=P_opt)
+total_nn_for <- forecast(total_nn_fit, h=85)
+```
+
+```{r}
+# Plot Total Forecasts
+autoplot(ts_total,series="Total CO2 Emissions Time Series History") +
+  autolayer(total_nn_fit$fitted,series = "Total CO2 NN Model (p = 2, P = 6)") +
+  autolayer(total_nn_for$mean, series = "Total CO2 Optimized NN Forecast") +
+  #Add other forecasts to same plot
+  #autolayer(total_nn_2412_for$mean, series = "Total CO2 Simple NN Forecast") +
+  #autolayer(total_arima_for$mean, series = "Total CO2 ARIMA Forecast") +
+  #autolayer(total_tbats_for$mean, series = "Total CO2 TBATS Forecast") +
+  
+  xlab("Year") + ylab("Total CO2 Emissions (Million Metric Tons CO2)") +
+  ggtitle("Total CO2 Emissions 2030 Forecast") 
+```
+
+# Summary
+
+After fitting models and forecasts for the historical data of coal, natural gas, petroleum, and the total emissions from energy consumption, we can now examine how these projections compare to President Biden's CO2 emission reduction goals. President Biden's CO2 emission goals are to reduce the 2005 emission levels by 50% by 2030. In order to compare these figures to our forecasts, we found the average monthly emissions in 2005 for coal, natural gas, petroleum, and total emissions. To determine the 2030 goal, we divided the average 2005 levels by 2. 
+
+In the plots below, we graphed the best fitting models we found in our analyses with the 2005 average emission levels highlighed in a black horizontal line and the 2030 goal line in green. The coal emissions forecast through 2030 is fully below the green 2030 goal line, suggesting that this individual sector is on track to meet the reduction goal. With the opposite trajectory, the natural gas forecast is projected to increase rather than decrease, and as a result our analyses suggest that this individual sector will not meet the 50% reduction goal. The petroleum forecast suggests a decreasing trend from thee 2005 baseline, but not enough to meet the 50% reduction goal. 
+
+Looking at the total emissions projections in the last figure, we can see that there is a notable decrease from the 2005 levels projected by 2030. It appears that although natural gas emissions are forecasted to increase, it may be offset by decreasing emissions of coal and petroleum. However, the average 2005 total emissions level was 500 million metric tons of CO2, which makes the 2030 goal to be 250 million metric tons. Based on our analyses, we forecast 2030 average levels to be approximately 400 million metric tons, equating to a 20% reduction, falling short of the 50% reduction goal without significant changes made through policy or other actions.
+
+```{r finding the means}
+# finding mean of 2005 data for baseline
+coal_2005 <- mean(ourdata$coalimports[385:396])
+#98.53892
+
+natgas_2005 <- mean(ourdata$naturalgas[385:396])
+ #181.6789
+
+petrol_2005 <- mean(ourdata$petroleumlessbioco2emissions[385:396])
+# 219.4093
+
+totalem_2005 <- mean(ourdata$totenergyco2emissions[385:396])
+ #500.5958
+
+# developing goal level for 2030, 50% of 2005 level
+coal_2030_goal <- coal_2005/2
+natgas_2030_goal <- natgas_2005/2
+petrol_2030_goal <- petrol_2005/2
+totalem_2030_goal <- totalem_2005/2
+
+```
+
+```{r coal forecast plot with goal lines, fig.height=4.5, fig.align='center', out.width="70%", fig.cap="\\label{fig:figs} Coal Forecast with baseline and goal line" }
+autoplot(coal_ts) +
+  autolayer(coal_future_forecast, series = "Coal forecast", PI=FALSE) +
+    geom_hline(yintercept = coal_2005) +
+  geom_hline(yintercept = coal_2030_goal, color = "green") +
+  ylab("Coal Import forecasting (Million Metric Tons") +
+  ggtitle("Coal Emissions 2030 Forecast with 2005 baseline and 2030 goal line")
+```
+
+```{r nat gas final plot 1, fig.height=4.5, fig.align='center', out.width="70%", fig.cap="\\label{fig:figs} Natural Gas Forecast with baseline and goal line" }
+#Ploting the forecast with best model
+autoplot(ts_natgas, ylime = c(0,200)) +
+  autolayer(natgas_2030for, series = "Nat Gas Emissions forecast", PI=FALSE) +
+    geom_hline(yintercept = natgas_2005) +
+  geom_hline(yintercept = natgas_2030_goal, color = "green") +
+  ylab("Nat Gas Emissions (Million Metric Tons") +
+  ggtitle("Natural Gas Emissions 2030 Forecast with 2005 baseline & 2030 goal line")
+```
+```{r petroleum, fig.height=4.5, fig.align='center', out.width="70%", fig.cap="\\label{fig:figs} Petroleum Forecast with baseline and goal line" }
+autoplot(ts_petrol_clean, ylim = c(0,300)) +
+  autolayer(petrol_nn_for, series = "Optimized NN Model Forecast") +
+    ylab("Petroleum Emissions (Million Metric Tons") +
+    geom_hline(yintercept = petrol_2005) +
+  geom_hline(yintercept = petrol_2030_goal, color = "green") +
+  xlab("Year") + ylab("Total CO2 Emissions (Million Metric Tons CO2)") +
+  ggtitle("Petroleum Emissions 2030 Forecast with 2005 baseline and 2030 goal line") 
+```
+
+```{r total emissions with goal lines, fig.height=4.5, fig.align='center', out.width="70%", fig.cap="\\label{fig:figs} Total Emissions Forecast with baseline and goal line" }
+# Plot Total Forecasts
+autoplot(ts_total,series="Total CO2 Emissions Time Series History", ylim = c(0,575)) +
+  autolayer(total_nn_for$mean, series = "Total CO2 Optimized NN Forecast") +
+  geom_hline(yintercept = totalem_2005) +
+  geom_hline(yintercept = totalem_2030_goal, color = "green") +
+  xlab("Year") + ylab("Total CO2 Emissions (Million Metric Tons CO2)") +
+  ggtitle("Total CO2 Emissions 2030 Forecast with 2005 baseline and 2030 goal line") 
+```
+
+
+
